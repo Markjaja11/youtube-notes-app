@@ -1,50 +1,19 @@
-import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, forwardRef, useImperativeHandle } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Trash2 } from 'lucide-react';
+import { useVideos } from '../hooks/useVideos';
 
-const VideoLibrary = forwardRef(({ onSelectVideo, selectedVideo, onDownloadComplete }, ref) => {
-  const [videos, setVideos] = useState([]);
+const VideoLibrary = forwardRef(({ onSelectVideo, selectedVideo }, ref) => {
+  const { videos, loading, error: loadError, reload } = useVideos();
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadUrl, setDownloadUrl] = useState('');
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    loadVideos();
-  }, []);
-
-  useEffect(() => {
-    if (onDownloadComplete) {
-      loadVideos();
-    }
-  }, [onDownloadComplete]);
-
   // Expose refresh method to parent
   useImperativeHandle(ref, () => ({
-    refresh: loadVideos
+    refresh: reload
   }));
-
-  const loadVideos = async () => {
-    try {
-      const videoList = await window.electronAPI.getVideos();
-
-      // Load transcripts for each video
-      const videosWithTranscripts = await Promise.all(
-        videoList.map(async (video) => {
-          try {
-            const transcript = await window.electronAPI.getTranscript(video.id);
-            return { ...video, transcript };
-          } catch (error) {
-            return { ...video, transcript: '' };
-          }
-        })
-      );
-
-      setVideos(videosWithTranscripts);
-    } catch (error) {
-      console.error('Failed to load videos:', error);
-    }
-  };
 
   const getFirst100Words = (text) => {
     if (!text) return '';
@@ -67,7 +36,7 @@ const VideoLibrary = forwardRef(({ onSelectVideo, selectedVideo, onDownloadCompl
 
       if (result.success) {
         setDownloadUrl('');
-        await loadVideos();
+        await reload();
         // Auto-select the newly downloaded video
         if (result.video) {
           onSelectVideo(result.video);
@@ -90,12 +59,17 @@ const VideoLibrary = forwardRef(({ onSelectVideo, selectedVideo, onDownloadCompl
     }
 
     try {
-      await window.electronAPI.deleteVideo(videoId);
-      await loadVideos();
+      const result = await window.electronAPI.deleteVideo(videoId);
 
-      // Deselect if this was the selected video
-      if (selectedVideo && selectedVideo.id === videoId) {
-        onSelectVideo(null);
+      if (result.success) {
+        await reload();
+
+        // Deselect if this was the selected video
+        if (selectedVideo && selectedVideo.id === videoId) {
+          onSelectVideo(null);
+        }
+      } else {
+        setError(result.error || 'Failed to delete video');
       }
     } catch (error) {
       console.error('Failed to delete video:', error);
@@ -126,10 +100,18 @@ const VideoLibrary = forwardRef(({ onSelectVideo, selectedVideo, onDownloadCompl
         </Button>
       </form>
 
-      {error && <div className="px-4 py-3 bg-red-50 text-red-800 text-sm border-l-3 border-red-800">{error}</div>}
+      {(error || loadError) && (
+        <div className="px-4 py-3 bg-red-50 text-red-800 text-sm border-l-3 border-red-800">
+          {error || loadError}
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto">
-        {videos.length === 0 ? (
+        {loading ? (
+          <div className="py-10 px-5 text-center text-gray-500">
+            <p>Loading videos...</p>
+          </div>
+        ) : videos.length === 0 ? (
           <div className="py-10 px-5 text-center text-gray-500">
             <p>No videos yet. Download one to get started!</p>
           </div>

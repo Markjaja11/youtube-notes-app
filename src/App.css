@@ -401,3 +401,77 @@
 [contenteditable]:focus {
   outline: none;
 }
+
+/* Bold and Italic */
+.markdown-bold {
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.markdown-italic {
+  font-style: italic;
+  color: #2a2a2a;
+}
+
+/* Inline Code */
+.markdown-code {
+  background-color: #f4f4f4;
+  border: 1px solid #e0e0e0;
+  border-radius: 3px;
+  padding: 0.2em 0.4em;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 0.9em;
+  color: #d73a49;
+}
+
+/* Code Blocks */
+.markdown-pre {
+  background-color: #f6f8fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  padding: 16px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 0.9em;
+  color: #24292e;
+  overflow-x: auto;
+  line-height: 1.5;
+  margin: 1em 0;
+}
+
+/* Lists */
+.markdown-list,
+.markdown-list-numbered {
+  margin: 0.5em 0;
+  padding: 0;
+  list-style: none;
+}
+
+.markdown-li,
+.markdown-li-numbered {
+  font-size: 1em;
+  line-height: 1.6;
+  margin: 0.3em 0;
+  padding-left: 2em;
+  color: #333;
+  position: relative;
+  list-style: none;
+}
+
+.markdown-li::before {
+  content: '•';
+  position: absolute;
+  left: 0.5em;
+  color: #4285f4;
+  font-weight: bold;
+}
+
+.markdown-li-numbered::before {
+  content: attr(data-number) '.';
+  position: absolute;
+  left: 0;
+  width: 1.8em;
+  color: #4285f4;
+  font-weight: 500;
+  text-align: right;
+  padding-right: 0.5em;
+}

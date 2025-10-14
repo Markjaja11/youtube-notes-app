@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from './ui/button';
-import { FileText } from 'lucide-react';
+import { FileText, Save, Check, Clock } from 'lucide-react';
 import MarkdownEditor from './MarkdownEditor';
+import { useAutoSave } from '../hooks/useAutoSave';
 
 function NotesEditor({ video, onTranscriptUpdate }) {
   const [content, setContent] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState(null);
 
   // Load transcript when video changes
   useEffect(() => {
@@ -27,23 +26,22 @@ function NotesEditor({ video, onTranscriptUpdate }) {
     }
   };
 
-  const saveTranscript = async () => {
+  const saveTranscript = useCallback(async () => {
     if (!video) return;
 
-    setIsSaving(true);
-    try {
-      await window.electronAPI.updateTranscript(video.id, content);
-      setLastSaved(new Date());
-      // Notify parent to refresh video list
-      if (onTranscriptUpdate) {
-        onTranscriptUpdate(video.id);
-      }
-    } catch (error) {
-      console.error('Failed to save transcript:', error);
-    } finally {
-      setIsSaving(false);
+    await window.electronAPI.updateTranscript(video.id, content);
+    // Notify parent to refresh video list
+    if (onTranscriptUpdate) {
+      onTranscriptUpdate(video.id);
     }
-  };
+  }, [video, content, onTranscriptUpdate]);
+
+  // Auto-save hook
+  const { isSaving, lastSaved, hasUnsavedChanges, saveNow } = useAutoSave(
+    content,
+    saveTranscript,
+    { delay: 2000, enabled: !!video }
+  );
 
   const handleChange = (e) => {
     setContent(e.target.value);
@@ -66,22 +64,42 @@ function NotesEditor({ video, onTranscriptUpdate }) {
       <div className="px-5 py-5 border-b border-gray-200 flex justify-between items-center">
         <h3 className="text-lg font-semibold text-gray-900">Note</h3>
         <div className="flex items-center gap-3">
-          <Button
-            onClick={saveTranscript}
-            disabled={isSaving}
-            size="sm"
-          >
-            {isSaving ? 'Saving...' : 'Save'}
-          </Button>
-          {lastSaved && (
-            <span className="text-xs text-green-600">Saved {formatTimeAgo(lastSaved)}</span>
+          {/* Auto-save status indicator */}
+          {isSaving && (
+            <div className="flex items-center gap-2 text-sm text-blue-600">
+              <Clock className="w-4 h-4 animate-spin" />
+              <span>Saving...</span>
+            </div>
           )}
+          {!isSaving && lastSaved && !hasUnsavedChanges && (
+            <div className="flex items-center gap-2 text-sm text-green-600">
+              <Check className="w-4 h-4" />
+              <span>Saved {formatTimeAgo(lastSaved)}</span>
+            </div>
+          )}
+          {!isSaving && hasUnsavedChanges && (
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <Clock className="w-4 h-4" />
+              <span>Unsaved changes</span>
+            </div>
+          )}
+          {/* Manual save button (optional) */}
+          <Button
+            onClick={saveNow}
+            disabled={isSaving || !hasUnsavedChanges}
+            size="sm"
+            variant="outline"
+            className="text-xs"
+          >
+            <Save className="w-3.5 h-3.5 mr-1.5" />
+            Save Now
+          </Button>
         </div>
       </div>
       <MarkdownEditor
         value={content}
         onChange={handleChange}
-        placeholder="Write your notes here... Use # for headings"
+        placeholder="Write your notes here... Use # for headings, **bold**, *italic*, - lists, `code`"
         className="flex-1 text-base leading-relaxed"
       />
     </div>

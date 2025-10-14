@@ -3,24 +3,21 @@ import { Play } from 'lucide-react';
 
 function VideoPlayer({ video }) {
   const videoRef = useRef(null);
-  const [videoPath, setVideoPath] = useState(null);
 
   useEffect(() => {
-    if (video) {
-      // Get the full file path from Electron
-      window.electronAPI.getVideoPath(video.filename).then(path => {
-        setVideoPath(`file://${path}`);
-      });
-    } else {
-      setVideoPath(null);
+    if (video && videoRef.current) {
+      const videoPath = `video://${video.filename}`;
+
+      // Get the current src (may include full URL with protocol)
+      const currentSrc = videoRef.current.src;
+
+      // Only reload if it's a different video (compare filenames)
+      if (!currentSrc.endsWith(video.filename)) {
+        videoRef.current.src = videoPath;
+        videoRef.current.load();
+      }
     }
   }, [video]);
-
-  useEffect(() => {
-    if (videoRef.current && videoPath) {
-      videoRef.current.load();
-    }
-  }, [videoPath]);
 
   if (!video) {
     return (
@@ -44,9 +41,7 @@ function VideoPlayer({ video }) {
           ref={videoRef}
           controls
           className="max-w-full max-h-full w-full h-full"
-          key={videoPath}
         >
-          {videoPath && <source src={videoPath} type="video/mp4" />}
           Your browser does not support the video tag.
         </video>
       </div>

@@ -1,12 +1,126 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { cn } from '../lib/utils';
 
-function MarkdownEditor({ value, onChange, placeholder, className }) {
+const MarkdownEditor = forwardRef(({ value, onChange, placeholder, className, onTimestampClick }, ref) => {
   const editorRef = useRef(null);
   const [isFocused, setIsFocused] = useState(false);
   const isUpdatingRef = useRef(false);
   const rafIdRef = useRef(null);
   const isMountedRef = useRef(true);
+
+  // Undo/Redo history
+  const historyRef = useRef([]);
+  const historyIndexRef = useRef(-1);
+  const isUndoRedoRef = useRef(false);
+  const lastSavedValueRef = useRef(value);
+
+  // Save to history
+  const saveToHistory = (newValue) => {
+    if (isUndoRedoRef.current) return;
+
+    // Remove any history after current index
+    historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
+
+    // Add new value to history
+    historyRef.current.push(newValue);
+
+    // Limit history to 100 entries
+    if (historyRef.current.length > 100) {
+      historyRef.current.shift();
+    } else {
+      historyIndexRef.current++;
+    }
+  };
+
+  // Undo function
+  const undo = () => {
+    if (historyIndexRef.current > 0) {
+      isUndoRedoRef.current = true;
+      historyIndexRef.current--;
+      const previousValue = historyRef.current[historyIndexRef.current];
+
+      // Update parent state
+      onChange({ target: { value: previousValue } });
+
+      // Force render the content immediately
+      renderContent(previousValue);
+      lastSavedValueRef.current = previousValue;
+
+      setTimeout(() => {
+        isUndoRedoRef.current = false;
+      }, 10);
+    }
+  };
+
+  // Redo function
+  const redo = () => {
+    if (historyIndexRef.current < historyRef.current.length - 1) {
+      isUndoRedoRef.current = true;
+      historyIndexRef.current++;
+      const nextValue = historyRef.current[historyIndexRef.current];
+
+      // Update parent state
+      onChange({ target: { value: nextValue } });
+
+      // Force render the content immediately
+      renderContent(nextValue);
+      lastSavedValueRef.current = nextValue;
+
+      setTimeout(() => {
+        isUndoRedoRef.current = false;
+      }, 10);
+    }
+  };
+
+  // Expose methods to parent component
+  useImperativeHandle(ref, () => ({
+    insertTextAtCursor: (text) => {
+      if (!editorRef.current) return;
+
+      // Focus the editor if it's not focused
+      if (!isFocused) {
+        editorRef.current.focus();
+      }
+
+      // Get current selection
+      const selection = window.getSelection();
+      if (!selection.rangeCount) {
+        // If no selection, append to the end
+        const lastChild = editorRef.current.lastChild;
+        if (lastChild) {
+          const range = document.createRange();
+          range.selectNodeContents(lastChild);
+          range.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      }
+
+      // Insert the text
+      document.execCommand('insertText', false, text);
+
+      // Trigger input event to save changes
+      handleInput();
+    },
+    focus: () => {
+      if (editorRef.current) {
+        editorRef.current.focus();
+      }
+    },
+    undo,
+    redo
+  }));
+
+  // Initialize history on mount or when value changes externally
+  useEffect(() => {
+    if (value !== lastSavedValueRef.current && !isUndoRedoRef.current) {
+      if (historyRef.current.length === 0 || historyRef.current[historyRef.current.length - 1] !== value) {
+        historyRef.current = [value || ''];
+        historyIndexRef.current = 0;
+        lastSavedValueRef.current = value;
+      }
+    }
+  }, [value]);
 
   // Update editor content when value prop changes from parent
   useEffect(() => {
@@ -151,7 +265,12 @@ function MarkdownEditor({ value, onChange, placeholder, className }) {
     // Escape HTML first
     let html = escapeHtml(text);
 
-    // Parse inline code first (so it doesn't get affected by other formatting)
+    // Parse timestamps first (e.g., [5:30] or [1:25:30])
+    html = html.replace(/\[(\d{1,2}:\d{2}(?::\d{2})?)\]/g, (match, timestamp) => {
+      return `<span class="markdown-timestamp" data-timestamp="${timestamp}">[${timestamp}]</span>`;
+    });
+
+    // Parse inline code (so it doesn't get affected by other formatting)
     html = html.replace(/`([^`]+)`/g, '<code class="markdown-code">$1</code>');
 
     // Parse bold (**text** or __text__)
@@ -329,6 +448,10 @@ function MarkdownEditor({ value, onChange, placeholder, className }) {
     isUpdatingRef.current = true;
     const text = getPlainText();
 
+    // Save to history
+    saveToHistory(text);
+    lastSavedValueRef.current = text;
+
     // Trigger onChange to update parent
     onChange({ target: { value: text } });
 
@@ -449,6 +572,46 @@ function MarkdownEditor({ value, onChange, placeholder, className }) {
     isUpdatingRef.current = false;
   };
 
+  const handleClick = (e) => {
+    // Check if a timestamp was clicked
+    if (e.target.classList.contains('markdown-timestamp')) {
+      e.preventDefault();
+      const timestamp = e.target.getAttribute('data-timestamp');
+      if (timestamp && onTimestampClick) {
+        onTimestampClick(timestamp);
+      }
+    }
+  };
+
+  // Global keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      // Only handle if the editor is focused
+      if (!isFocused) return;
+
+      // Undo: Ctrl+Z (Windows/Linux) or Cmd+Z (Mac)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        undo();
+        return;
+      }
+
+      // Redo: Ctrl+Y or Ctrl+Shift+Z (Windows/Linux) or Cmd+Shift+Z (Mac)
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+        e.preventDefault();
+        e.stopPropagation();
+        redo();
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown, true);
+    };
+  }, [isFocused]);
+
   // Cleanup effect
   useEffect(() => {
     isMountedRef.current = true;
@@ -472,6 +635,7 @@ function MarkdownEditor({ value, onChange, placeholder, className }) {
       onPaste={handlePaste}
       onFocus={handleFocus}
       onBlur={handleBlur}
+      onClick={handleClick}
       className={cn(
         "flex-1 outline-none px-5 py-4 overflow-y-auto",
         "focus:outline-none",
@@ -481,6 +645,6 @@ function MarkdownEditor({ value, onChange, placeholder, className }) {
       suppressContentEditableWarning
     />
   );
-}
+});
 
 export default MarkdownEditor;

@@ -1,8 +1,21 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Play } from 'lucide-react';
 
-function VideoPlayer({ video }) {
+const VideoPlayer = forwardRef(({ video }, ref) => {
   const videoRef = useRef(null);
+
+  // Expose methods to parent
+  useImperativeHandle(ref, () => ({
+    jumpToTimestamp: (timestamp) => {
+      if (videoRef.current) {
+        videoRef.current.currentTime = timestamp;
+        videoRef.current.play();
+      }
+    },
+    getCurrentTime: () => {
+      return videoRef.current ? videoRef.current.currentTime : 0;
+    }
+  }));
 
   useEffect(() => {
     if (video && videoRef.current) {
@@ -47,6 +60,6 @@ function VideoPlayer({ video }) {
       </div>
     </div>
   );
-}
+});
 
 export default VideoPlayer;

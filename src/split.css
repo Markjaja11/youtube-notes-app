@@ -5,15 +5,21 @@
 }
 
 .gutter {
-  background-color: #e5e7eb;
+  background-color: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   background-repeat: no-repeat;
   background-position: 50%;
   cursor: col-resize;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
+  border-left: 1px solid rgba(255, 255, 255, 0.3);
+  border-right: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 .gutter:hover {
-  background-color: #3b82f6;
+  background-color: rgba(66, 133, 244, 0.3);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .gutter.gutter-horizontal {

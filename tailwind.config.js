@@ -9,7 +9,13 @@ module.exports = {
       borderWidth: {
         '3': '3px',
       },
+      backdropBlur: {
+        xs: '2px',
+      },
     },
   },
   plugins: [],
+  future: {
+    hoverOnlyWhenSupported: true,
+  },
 }

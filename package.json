@@ -1,7 +1,7 @@
 {
-  "name": "youtube-notes-app",
+  "name": "laman",
   "version": "1.0.0",
-  "description": "",
+  "description": "Your video watcher with note taking for students",
   "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,13 @@
     "start": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "package": "npm run build && electron-builder"
   },
-  "keywords": [],
+  "keywords": [
+    "video",
+    "notes",
+    "education",
+    "students",
+    "learning"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
@@ -21,8 +27,11 @@
     "cross-env": "^10.1.0",
     "electron": "^38.2.2",
     "electron-builder": "^26.0.12",
+    "electron-icon-builder": "^2.0.1",
     "electron-rebuild": "^3.2.9",
     "postcss": "^8.5.6",
+    "sharp": "^0.34.4",
+    "svg2png-many": "^0.0.7",
     "tailwindcss": "^3.4.17",
     "vite": "^7.1.9",
     "wait-on": "^9.0.1"
@@ -32,24 +41,27 @@
     "better-sqlite3": "^12.4.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "fs-extra": "^11.3.2",
     "lucide-react": "^0.545.0",
+    "markdown-it": "^14.1.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-split": "^2.0.14",
     "tailwind-merge": "^3.3.1"
   },
   "build": {
-    "appId": "com.youtube-notes-app",
-    "productName": "YouTube Notes",
+    "appId": "com.laman",
+    "productName": "Laman",
     "files": [
       "dist/**/*",
       "electron/**/*",
       "package.json"
     ],
     "directories": {
-      "buildResources": "assets"
+      "buildResources": "build"
     },
     "mac": {
+      "icon": "build/icon.icns",
       "category": "public.app-category.productivity",
       "target": [
         "dmg",
@@ -57,12 +69,14 @@
       ]
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis",
         "portable"
       ]
     },
     "linux": {
+      "icon": "build/icons",
       "target": [
         "AppImage",
         "deb"

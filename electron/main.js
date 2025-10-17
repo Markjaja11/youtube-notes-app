@@ -1,8 +1,10 @@
-const { app, BrowserWindow, ipcMain, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { initDatabase, getAllVideos, getVideo, addVideo, updateTranscript, getTranscript, deleteVideo } = require('./database');
+const { initDatabase, getAllVideos, getVideo, addVideo, updateTranscript, getTranscript, deleteVideo, createBookmark, getBookmarks, updateBookmark, deleteBookmark } = require('./database');
 const { downloadVideo } = require('./downloader');
+const { generateNotePDF, sanitizeFilename } = require('./pdfExporter');
+const { checkFFmpegInstalled, getVideoInfo, importVideo, getFileSize, formatFileSize, LARGE_FILE_WARNING_SIZE } = require('./videoImporter');
 const { WINDOW, DIRS, VIDEO, HTTP } = require('./config/constants');
 const { isValidYouTubeUrl, isValidFilename } = require('./utils/validators');
 
@@ -24,7 +26,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 function createWindow() {
-  mainWindow = new BrowserWindow({
+  const windowOptions = {
     width: WINDOW.DEFAULT_WIDTH,
     height: WINDOW.DEFAULT_HEIGHT,
     minWidth: WINDOW.MIN_WIDTH,
@@ -35,7 +37,14 @@ function createWindow() {
       contextIsolation: true,
       webSecurity: true, // Keep security enabled - use custom protocol instead
     },
-  });
+  };
+
+  // Set icon for Windows and Linux (macOS uses the app bundle icon automatically)
+  if (process.platform !== 'darwin') {
+    windowOptions.icon = path.join(__dirname, '../build/icon.png');
+  }
+
+  mainWindow = new BrowserWindow(windowOptions);
 
   // Load the app
   if (process.env.NODE_ENV === 'development') {
@@ -191,6 +200,185 @@ ipcMain.handle('delete-video', async (event, id) => {
     deleteVideo(id);
     return { success: true };
   } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Bookmark IPC Handlers
+ipcMain.handle('create-bookmark', async (event, videoId, timestamp, title, note) => {
+  try {
+    const bookmark = createBookmark(videoId, timestamp, title, note);
+    return { success: true, bookmark };
+  } catch (error) {
+    console.error('Error creating bookmark:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-bookmarks', async (event, videoId) => {
+  try {
+    return getBookmarks(videoId);
+  } catch (error) {
+    console.error('Error getting bookmarks:', error);
+    return [];
+  }
+});
+
+ipcMain.handle('update-bookmark', async (event, id, title, note) => {
+  try {
+    updateBookmark(id, title, note);
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating bookmark:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('delete-bookmark', async (event, id) => {
+  try {
+    deleteBookmark(id);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting bookmark:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// PDF Export Handler
+ipcMain.handle('export-pdf', async (event, videoId) => {
+  try {
+    // Get video data
+    const video = getVideo(videoId);
+    if (!video) {
+      return { success: false, error: 'Video not found' };
+    }
+
+    // Get transcript
+    const transcript = getTranscript(videoId);
+
+    // Get bookmarks
+    const bookmarks = getBookmarks(videoId);
+
+    // Generate PDF buffer
+    console.log('Generating PDF for video:', video.title);
+    const pdfBuffer = await generateNotePDF(video, transcript, bookmarks);
+
+    // Create default filename
+    const sanitizedTitle = sanitizeFilename(video.title);
+    const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const defaultFilename = `${sanitizedTitle}-Notes-${date}.pdf`;
+
+    // Show save dialog
+    const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export Notes as PDF',
+      defaultPath: path.join(app.getPath('documents'), defaultFilename),
+      filters: [
+        { name: 'PDF Files', extensions: ['pdf'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+      properties: ['createDirectory', 'showOverwriteConfirmation']
+    });
+
+    if (canceled || !filePath) {
+      return { success: false, error: 'Export canceled' };
+    }
+
+    // Write PDF to disk
+    fs.writeFileSync(filePath, pdfBuffer);
+    console.log('PDF exported successfully to:', filePath);
+
+    return { success: true, filePath };
+  } catch (error) {
+    console.error('Error exporting PDF:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Video Import Handlers
+ipcMain.handle('select-video-file', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Select Video File',
+      properties: ['openFile'],
+      filters: [
+        {
+          name: 'Video Files',
+          extensions: ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'flv', 'wmv', 'm4v', 'mpg', 'mpeg', '3gp', 'ogv']
+        },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true };
+    }
+
+    const filePath = result.filePaths[0];
+    const videoInfo = getVideoInfo(filePath);
+    const fileSize = getFileSize(filePath);
+    const fileSizeFormatted = formatFileSize(fileSize);
+    const isLargeFile = fileSize > LARGE_FILE_WARNING_SIZE;
+
+    return {
+      success: true,
+      filePath,
+      videoInfo,
+      fileSize,
+      fileSizeFormatted,
+      isLargeFile
+    };
+  } catch (error) {
+    console.error('Error selecting video file:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('check-ffmpeg', async () => {
+  try {
+    const isInstalled = await checkFFmpegInstalled();
+    return { success: true, installed: isInstalled };
+  } catch (error) {
+    console.error('Error checking FFmpeg:', error);
+    return { success: true, installed: false };
+  }
+});
+
+ipcMain.handle('import-video', async (event, sourceFilePath) => {
+  try {
+    console.log('Importing video:', sourceFilePath);
+
+    // Import the video (copy or convert) with progress callback
+    const result = await importVideo(
+      sourceFilePath,
+      app.getPath('userData'),
+      (progressData) => {
+        // Send progress updates to renderer
+        event.sender.send('import-progress', progressData);
+      }
+    );
+
+    if (!result.success) {
+      return { success: false, error: 'Import failed' };
+    }
+
+    // Add to database
+    const videoData = {
+      title: result.title,
+      filename: result.fileName,
+      source: 'imported'
+    };
+
+    const video = addVideo(videoData);
+
+    console.log('Video imported successfully:', result.title);
+
+    return {
+      success: true,
+      video,
+      wasConverted: result.wasConverted
+    };
+  } catch (error) {
+    console.error('Error importing video:', error);
     return { success: false, error: error.message };
   }
 });
